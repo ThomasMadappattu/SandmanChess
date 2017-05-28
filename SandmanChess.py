@@ -13,6 +13,7 @@ import functools
 from StringIO import StringIO
 import fileinput
 import time
+import threading
 
 class UIConstants:
         def __init__(self):
@@ -25,14 +26,15 @@ class UIConstants:
                 self.ServerTypeICC = 6
                 self.FICSServerHost = "freechess.org"
                 self.FICSPort = 5000
-                
+                self.FICSPrompt = 'fics%'
+                self.ICCServerHost = "chessclub.com"
 
 
 class ChessEnginePlayer:
         def set_board(self,brd):
                 self.chessBoard = brd
-                self.engineDepth = 1
-                self.timemS = 1000
+                self.engineDepth = 30
+                self.timemS = 10000
         def start_new_game(self):
                 self.engine.ucinewgame()
         def set_engine_path(self, path):
@@ -54,19 +56,105 @@ class ChessEnginePlayer:
 class NetworkPlayer:
         def __init__(self):
                 self.Constants = UIConstants()
-                self.current_line =' '  
-        def login_fics(self,username,password):
-                self.telnetHandle = telnetlib.Telnet(self.Constants.FICSServerHost)
+                self.current_line =' '
+                self.tokens = []
+                self.FIRST_WORD = 0
+                self.TURN_INDEX = 9
+                self.WHITE_CASTLE_S_INDEX =  11
+                self.WHITE_CASTLE_L_INDEX =  12
+                self.BLACK_CASTLE_S_INDEX =  13
+                self.BLACK_CASTLE_L_INDEX =  14
+                self.INDEX_HALF_MOVE_CLOCK = 15
+                self.GAME_NUMBER_INDEX    = 16
+                self.WHITE_NAME          = 17
+                self.BLACK_NAME          = 18
+                self.RELATION_INDEX      = 19
+                self.INITIAL_TIME        =20
+                self.INCREMENT           =21
+                self.WHITE_STRENGTH      = 22
+                self.BLACK_STRENGTH      = 23
+                self.REM_TIME_WHITE      = 24
+                self.REM_TIME_BLACK     = 25
+                self.MOVE_NUM           = 26
+                self.chessBoard         = chess.Board()
+        def login(self,username,password,hostname):
+                self.telnetHandle = telnetlib.Telnet(hostname)
                 self.telnetHandle.read_until("login:")
                 self.telnetHandle.write(username+"\r\n")
-                self.telnetHandle.read_until("password:")
-                self.telnetHandle.write(password+"\r\n")
-                #self.telnetHandle.write("set style 12 \r\n")
+                if ( username.lower().strip() != 'guest'):
+                        self.telnetHandle.read_until("password:")
+                        self.telnetHandle.write(password+"\r\n")
+                        self.telnetHandle.write("set style 12 \r\n")
+                else:
+                        self.telenetHandle.write("\r\n")
+        def style12_item_to_fen_item(self,item):
+                index = 0
+                length = len(item)
+                fen_item = item
+                fen_item = fen_item.replace('--------','8')
+                fen_item = fen_item.replace('-------','7')
+                fen_item = fen_item.replace('------','6')
+                fen_item = fen_item.replace('-----','5')
+                fen_item = fen_item.replace('----','4')
+                fen_item = fen_item.replace('---','3')
+                fen_item = fen_item.replace('--','2')
+                fen_item = fen_item.replace('-','1')
+                print(fen_item)
+                return fen_item
+        def style12_to_fen(self):
+                if ( self.is_style_12()):
+                        index = 2
+                        count = 4
+                        #find out postion 
+                        fen_str = self.style12_item_to_fen_item(self.tokens[index-1])
+                        while ( index <   self.TURN_INDEX ):
+                                fen_str = fen_str + '/'+ self.style12_item_to_fen_item(self.tokens[index].strip())
+                                index = index + 1
+                        # turn to move 
+                        fen_str = fen_str + ' ' + self.tokens[self.TURN_INDEX].strip().lower() + ' '
+                        # Castling rights  
+                        if ( int (self.tokens[self.WHITE_CASTLE_S_INDEX].strip()) == 1 ):
+                                fen_str = fen_str + 'K'
+                                count = count -1
+                        if ( int (self.tokens[self.WHITE_CASTLE_L_INDEX].strip()) == 1 ):
+                                fen_str = fen_str + 'Q'
+                                count  = count -1 
+                        if ( int (self.tokens[self.BLACK_CASTLE_S_INDEX].strip()) == 1 ):
+                                count   = count -1
+                                fen_str = fen_str + 'k'
+                        if ( int (self.tokens[self.BLACK_CASTLE_L_INDEX].strip()) == 1 ):
+                                fen_str = fen_str + 'q'
+                                count =  count -1
+                        if ( count  == 4 ):
+                                fen_str = fen_str + '-'
+                        # en pasant sqauare
+                        fen_str = fen_str + ' - '
+                        fen_str = fen_str + self.tokens[self.INDEX_HALF_MOVE_CLOCK] + ' ' + self.tokens[self.MOVE_NUM]
+                        print(fen_str)
+                        self.chessBoard = chess.Board(fen_str)
+                        print(self.chessBoard)
+                        
+                                
+                        
+                                
+                        
+                        
+        def is_style_12(self):
+                if(len(self.tokens) > 0 ):
+                        if ( self.tokens[self.FIRST_WORD].strip() == '<12>'):
+                                return True
+                return False
+        def handle_line(self):
+                if ( self.is_style_12()):
+                        self.style12_to_fen()
         def parse_style_12(self,style12_str):
                 pass
         def read_line(self):
-                self.current_line = self.telnetHandle.read_until("\n",timeout=2)
-                print(self.current_line) 
+                self.current_line = self.telnetHandle.read_until("\n",timeout=50)
+                self.current_line = self.current_line.replace(self.Constants.FICSPrompt,"")
+                self.tokens = self.current_line.split()
+                print(self.tokens)   
+                self.handle_line()
                 return self.current_line
         def send_command(self,command):
                 self.telnetHandle.write(command+"\r\n")
@@ -79,8 +167,8 @@ class NetworkPlayer:
                 self.username = username
         def set_password( self, pwd):
                 self.password = pwd
-        def login():
-                pass
+        def get_board(self):
+                return self.chessBoard
         def get_move(self):
                 pass
 
@@ -135,7 +223,7 @@ class LucasFnsParser:
         return self.currentItem[self.FenIndex]
     def GetCurrentDescription(self):
         if ( len(self.currentItem) > 1 ):
-            return self.currentItem[self.DescriptionIndex]
+                return self.currentItem[self.DescriptionIndex]
         return None
     def GetCurrentMoves(self):
         if ( len(self.currentItem> 2)):
@@ -158,7 +246,7 @@ class PgnItem:
 
 
 class LoginDialog:
-    def __init__(self,parent,parentUI):
+    def __init__(self,parent,parentUI,hostname):
         self.LoginFrame = Toplevel(parent)
         self.parent = parent
         self.parentUI = parentUI
@@ -170,37 +258,55 @@ class LoginDialog:
         self.PasswordTextBox.grid(row=1,column=1)
         self.LoginButton     = Button(self.LoginFrame,text="Login",command=self.login_pressed).grid(row=2,column=0)
         self.CancelButton    = Button(self.LoginFrame,text="Cancel",command=self.cancel_pressed).grid(row=2,column=1)
+        self.hostname = hostname
     def cancel_pressed(self):
         self.LoginFrame.destroy()
     def login_pressed(self):
         self.parentUI.network_player = NetworkPlayer()
-        self.parentUI.network_player.login_fics(self.UserNameTextBox.get(),self.PasswordTextBox.get())
+        self.parentUI.network_player.login(self.UserNameTextBox.get(),self.PasswordTextBox.get(),self.hostname)
         self.LoginFrame.destroy()
          
 
 class NetworkInterfaceDialog:
-    def __init__(self,parent,network_player):
+    def __init__(self,parent,network_player,parentUI):
         self.network_player= network_player
         self.NetworkFrame = Toplevel(parent)
         self.TelenetMessages = Text(self.NetworkFrame,width=90,height=40)
         self.TelenetMessages.pack()
-        self.CommandEntry = Entry(self.NetworkFrame,width=30)
+        self.CommandEntry = Entry(self.NetworkFrame,width=90)
         self.CommandEntry.pack()
-        self.SendButton = Button(self.NetworkFrame,text="Send",command=self.send_button_pressed)
-        self.SendButton.pack(side=LEFT) 
-        self.NetworkFrame.after(500,self.update_messages)
-        self.line_count = 0 
-    def send_button_pressed(self):
+        self.NetworkFrame.after(200,self.start_update_thread)
+        self.line_count = 0
+        self.parentUI = parentUI
+        self.update_thread = None
+        self.NetworkFrame.bind("<Destroy>", lambda(event):self.cleanup_all())
+        self.CommandEntry.bind('<Return>',lambda(event):self.send_command())
+        self.stop = False
+    def send_command(self):
         self.network_player.send_command(self.CommandEntry.get())
+    def start_update_thread(self):
+        self.update_thread = threading.Thread(target = self.update_messages)
+        self.update_thread.start() 
     def update_messages(self):
-        currentLine = self.network_player.read_line()
-        self.TelenetMessages.insert(END,currentLine.strip()+"\n")
-        self.TelenetMessages.see(END)
-        self.line_count = self.line_count + 1 
-        if ( self.line_count > 5000 ):
-            self.TelenetMessages.delete(1.0,END)
-            self.line_count = 0
-        self.NetworkFrame.after(500,self.update_messages)
+        while True:
+                if(self.stop):
+                        return 
+                currentLine = self.network_player.read_line()
+                if ( len(currentLine) > 0 ):
+                        self.TelenetMessages.insert(END,currentLine.strip()+"\n")
+                self.TelenetMessages.see(END)
+                self.line_count = self.line_count + 1 
+                if ( self.line_count > 5000 ):
+                    self.TelenetMessages.delete(1.0,END)
+                    self.line_count = 0
+                if ( self.network_player.is_style_12()):
+                   self.parentUI.chessBoard= self.network_player.get_board()
+                   self.parentUI.draw_main_board()
+                time.sleep(0.25)
+
+    def cleanup_all(self):
+        if ( self.update_thread is not None):
+            self.stop = True
 
 
 
@@ -272,7 +378,7 @@ class PgnDialog:
                         tkMessageBox.showinfo(" Please","select a game ")
                         return
                 else:
-                        self.currentSelection = self.currentSelection[0]
+                        self.currentSelection = int( self.currentSelection[0] )
                 self.parentUI.pgn_file.seek(self.filtered_list[self.currentSelection].offset)
                 self.parentUI.pgnGame = chess.pgn.read_game(self.parentUI.pgn_file)
                 self.parentUI.currentGameNode = self.parentUI.pgnGame
@@ -372,7 +478,8 @@ class SandmanGui:
                 self.pgn_item_list = None
                 self.current_pgn_index = 0
                 self.pgn_stop = False
-                self.network_player = None 
+                self.network_player = None
+                self.CONSTANT     =  UIConstants()
         def init_board(self ,parentGui):
                 self.parent = parentGui
                 self.theme  = GuiTheme(os.path.join(self.themeDir,'boring'))
@@ -396,8 +503,8 @@ class SandmanGui:
 
                 self.networkMenu  =  Menu ( self.parent )
                 self.menubar.add_cascade ( label = "Network", menu = self.networkMenu)
-                self.networkMenu.add_command(label = "FICS",command=self.fics_pressed)
-                self.networkMenu.add_command(label = "ICC")
+                self.networkMenu.add_command(label = "FICS",command=lambda: self.handle_network(self.CONSTANT.FICSServerHost))
+                self.networkMenu.add_command(label = "ICC",command=lambda: self.handle_network(self.CONSTANT.ICCServerHost))
                 self.trainingMenu  =  Menu (self.parent)
                 self.menubar.add_cascade ( label = "Training", menu = self.trainingMenu)
                 self.pgnMenu  =  Menu ( self.parent)
@@ -429,8 +536,8 @@ class SandmanGui:
                 self.buttonPanel.pack()
                 self.infoFrame = Frame(self.parent)
                 self.txtPgn     = Text(self.infoFrame,height=10)
-                #self.infoLabel =  Label(self.infoFrame,width=100)
-                #self.infoLabel.pack(side=BOTTOM)
+                self.infoLabel =  Label(self.infoFrame,height=5,width=70)
+                self.infoLabel.pack(side=BOTTOM)
                 self.draw_main_board()
                 self.parent.config( menu = self.menubar)
                 self.txtPgn.pack(side=TOP)
@@ -480,10 +587,11 @@ class SandmanGui:
                         moveLegal = currentMove in self.chessBoard.legal_moves
                         if ( moveLegal ):
                                 self.chessBoard.push(currentMove)
-                                print(self.chessBoard)
-                                print(self.chessBoard.fen()) 
                                 self.draw_main_board()
                                 Tk.update(self.parent)
+                                if ( self.network_player is not None):
+                                        self.network_player.send_command(str(currentMove))
+                                                                     
                         self.draw_main_board()
                         
                         
@@ -633,7 +741,10 @@ class SandmanGui:
             PromotionDialog(self,turn)
             
         def set_external_engine(self):
-            self.enginePath=tkFileDialog.askopenfile(mode='r').name
+            engine_file=tkFileDialog.askopenfile(mode='r')
+            if ( engine_file is None):
+                return 
+            self.enginePath = engine_file.name
             try:
                     self.set_engine_player()
             except:
@@ -665,6 +776,8 @@ class SandmanGui:
 
         def handle_open_pgn(self):
                 self.pgn_file = tkFileDialog.askopenfile(mode='r')
+                if ( self.pgn_file is None ):
+                    return 
                 self.header_list = list()
                 self.offset_list = list()
                 self.pgn_item_list = list()
@@ -770,25 +883,21 @@ class SandmanGui:
                                 self.parent.after(2000,lambda:self.pgn_play_pressed(True))
         def stop_button_pressed(self):
                 self.pgn_stop = True
-        def fics_pressed(self):
-            loginFrame = LoginDialog(self.parent,self)
+        def handle_network(self,hostname):
+            loginFrame = LoginDialog(self.parent,self,hostname)
             self.parent.wait_window(loginFrame.LoginFrame)
-            networkDialog = NetworkInterfaceDialog(self.parent,self.network_player)
+            if ( self.network_player is None):
+                return 
+            networkDialog = NetworkInterfaceDialog(self.parent,self.network_player,self)
                                 
                         
                                                         
                         
 if __name__ == "__main__":
-        tstEngine =  ChessEnginePlayer()
-        tstEngine.set_board(chess.Board())
-        pathEngine="/usr/local/bin/stockfish"
-        tstEngine.set_engine_path(pathEngine)
         root = Tk()
         root.wm_title("Sandman Chess v 0.1 ")
         root.resizable(0,0)
         ui = SandmanGui(root)
-        testTheme = GuiTheme("./themes/boring")
-        print(testTheme.get_themes("./themes"))        
         ui.set_theme("boring",False)
         ui.init_board(root)
         ui.draw_main_board()
