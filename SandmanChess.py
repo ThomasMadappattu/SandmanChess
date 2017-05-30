@@ -15,6 +15,7 @@ import fileinput
 import time
 import threading
 
+
 class UIConstants:
         def __init__(self):
                 self.PlayerMode = 0
@@ -22,6 +23,7 @@ class UIConstants:
                 self.NetworkMode = 2
                 self.PgnMode  = 3
                 self.TutorMode = 4
+                self.PuzzleMode = 5
                 self.ServerTypeFICS = 5
                 self.ServerTypeICC = 6
                 self.FICSServerHost = "freechess.org"
@@ -77,6 +79,21 @@ class NetworkPlayer:
                 self.REM_TIME_BLACK     = 25
                 self.MOVE_NUM           = 26
                 self.chessBoard         = chess.Board()
+                self.notificationStrings =  ["{Game ",
+                "Game ",
+                "    **ANNOUNCEMENT**",
+                "Removing game ",
+                "Notification: ",
+                "Creating: ",
+                "No ratings adjustment done.",
+                "Your seek",
+                "You are now observing"
+                "(told ",
+                " tells you: ",
+                " kibitzes: ",
+                "(U)(",
+                "(TD)(",
+                "(C)("]
         def login(self,username,password,hostname):
                 self.telnetHandle = telnetlib.Telnet(hostname)
                 self.telnetHandle.read_until("login:")
@@ -87,6 +104,7 @@ class NetworkPlayer:
                         self.telnetHandle.write("set style 12 \r\n")
                 else:
                         self.telenetHandle.write("\r\n")
+                self.notificationStrings.append(username)
         def style12_item_to_fen_item(self,item):
                 index = 0
                 length = len(item)
@@ -132,11 +150,7 @@ class NetworkPlayer:
                         fen_str = fen_str + self.tokens[self.INDEX_HALF_MOVE_CLOCK] + ' ' + self.tokens[self.MOVE_NUM]
                         print(fen_str)
                         self.chessBoard = chess.Board(fen_str)
-                        print(self.chessBoard)
-                        
-                                
-                        
-                                
+                        print(self.chessBoard)                               
                         
                         
         def is_style_12(self):
@@ -144,11 +158,16 @@ class NetworkPlayer:
                         if ( self.tokens[self.FIRST_WORD].strip() == '<12>'):
                                 return True
                 return False
+        def is_notification(self):
+                for item in self.notificationStrings:
+                        print(self.current_line.find(item))
+                        if ( self.current_line.find(item) > 0 ):
+                                return True
+                return False
         def handle_line(self):
                 if ( self.is_style_12()):
                         self.style12_to_fen()
-        def parse_style_12(self,style12_str):
-                pass
+        
         def read_line(self):
                 self.current_line = self.telnetHandle.read_until("\n",timeout=50)
                 self.current_line = self.current_line.replace(self.Constants.FICSPrompt,"")
@@ -171,6 +190,8 @@ class NetworkPlayer:
                 return self.chessBoard
         def get_move(self):
                 pass
+        def close(self):
+                self.telnetHandle.close()
 
 class  WoodPusherAI:
         def set_board(self,brd):
@@ -243,6 +264,16 @@ class PgnItem:
                 self.header = header
                 self.offset = offset
 
+class BalloonWindow:
+    def __init__(self,parent,text,x=400,y=20,wraplen=375,showtimeMs = 15000):
+        self.BalloonFrame =  Toplevel(parent)
+        self.BalloonFrame.wm_overrideredirect(True)
+        self.height = max ( 25 , ( len(text)/ ( wraplen /25) ) * 10.0 )
+        self.BalloonFrame.wm_geometry("%dx%d%+d%+d" % (400,self.height,550,20) ) 
+        self.BalloonLabel = Label(self.BalloonFrame, text=text, justify='left',background="#ffffe5", relief='solid', borderwidth=3,wraplength = wraplen)
+        self.BalloonLabel.pack(ipadx=1) 
+        self.BalloonFrame.after(showtimeMs,lambda:self.BalloonFrame.destroy())
+
 
 
 class LoginDialog:
@@ -275,22 +306,24 @@ class NetworkInterfaceDialog:
         self.TelenetMessages.pack()
         self.CommandEntry = Entry(self.NetworkFrame,width=90)
         self.CommandEntry.pack()
-        self.NetworkFrame.after(200,self.start_update_thread)
+        self.NetworkFrame.after(100,self.start_update_thread)
         self.line_count = 0
         self.parentUI = parentUI
         self.update_thread = None
         self.NetworkFrame.bind("<Destroy>", lambda(event):self.cleanup_all())
         self.CommandEntry.bind('<Return>',lambda(event):self.send_command())
-        self.stop = False
+        self.go_on = threading.Event()
+        self.go_on.set()
+        self.notification_line=''
+        self.parent = parent
     def send_command(self):
         self.network_player.send_command(self.CommandEntry.get())
     def start_update_thread(self):
         self.update_thread = threading.Thread(target = self.update_messages)
+        self.update_thread.daemon = True
         self.update_thread.start() 
     def update_messages(self):
-        while True:
-                if(self.stop):
-                        return 
+        while self.go_on.is_set():
                 currentLine = self.network_player.read_line()
                 if ( len(currentLine) > 0 ):
                         self.TelenetMessages.insert(END,currentLine.strip()+"\n")
@@ -302,11 +335,14 @@ class NetworkInterfaceDialog:
                 if ( self.network_player.is_style_12()):
                    self.parentUI.chessBoard= self.network_player.get_board()
                    self.parentUI.draw_main_board()
-                time.sleep(0.25)
+                if ( self.network_player.is_notification()):
+                     self.notification_line = currentLine  
+                     BalloonWindow(self.parent,self.notification_line,showtimeMs=10000)
 
     def cleanup_all(self):
-        if ( self.update_thread is not None):
-            self.stop = True
+        self.go_on.clear()
+        self.network_player.close()
+        self.update_thread.join(timeout=2)
 
 
 
@@ -480,6 +516,9 @@ class SandmanGui:
                 self.pgn_stop = False
                 self.network_player = None
                 self.CONSTANT     =  UIConstants()
+                #Testing
+                self.username = ''
+                self.PgnNextActivate = False
         def init_board(self ,parentGui):
                 self.parent = parentGui
                 self.theme  = GuiTheme(os.path.join(self.themeDir,'boring'))
@@ -507,6 +546,7 @@ class SandmanGui:
                 self.networkMenu.add_command(label = "ICC",command=lambda: self.handle_network(self.CONSTANT.ICCServerHost))
                 self.trainingMenu  =  Menu (self.parent)
                 self.menubar.add_cascade ( label = "Training", menu = self.trainingMenu)
+                self.trainingMenu.add_command(label="Solve PGN", command = self.solve_pgn)
                 self.pgnMenu  =  Menu ( self.parent)
                 self.pgnMenu.add_command(label="Open PGN", command=self.handle_open_pgn)
                 self.pgnMenu.add_command(label="List PGN Games", command = self.list_pgn_games)
@@ -585,19 +625,33 @@ class SandmanGui:
                         currentMove = chess.Move.from_uci(self.get_move_uci())
                         print(currentMove)
                         moveLegal = currentMove in self.chessBoard.legal_moves
-                        if ( moveLegal ):
+                        if ( moveLegal):
                                 self.chessBoard.push(currentMove)
+                                
                                 self.draw_main_board()
                                 Tk.update(self.parent)
+                                if ( self.verify_move() and moveLegal and self.is_puzzle_mode()):
+                
+                                                self.next_button_pressed()
+                                                self.next_button_pressed()
+                                                if ( self.line_done()):
+                                                        tkMessageBox.showinfo("Congrats!", "Solved")
+                                else:
+
+                                                if ( self.is_puzzle_mode()):
+                                                        tkMessageBox.showinfo("Nope!", "Not what i am looking for!")
+                                                        self.chessBoard.pop()
                                 if ( self.network_player is not None):
                                         self.network_player.send_command(str(currentMove))
-                                                                     
+                                       
+                                        
                         self.draw_main_board()
-                        
                         
                         if ( self.chessBoard.is_checkmate()):
                                 self.display_victory_message()
-                        if ( self.player is not None and (moveLegal) ):
+                        
+                        
+                        if ( self.player is not None and (moveLegal) and not self.is_puzzle_mode() ):
                                 playerMove= self.player.get_move()
                                
                                 if ( playerMove is not None ):
@@ -798,7 +852,15 @@ class SandmanGui:
                         self.pgnDialog = PgnDialog(self,self.pgn_item_list)
                 else:
                         tkMessageBox.showinfo("Sandmanchess","PGN not loaded")
+        def is_puzzle_mode(self):
+                if (self.mode == self.CONSTANT.PuzzleMode):
+                        return True
+                else:
+                        return False
         def prev_button_pressed(self):
+                if ( self.is_puzzle_mode()):
+                        return
+        
                 if self.pgnGame is not None:
                         if ( self.currentGameNode.parent is not None):
                                 self.currentGameNode = self.currentGameNode.parent
@@ -807,8 +869,18 @@ class SandmanGui:
                         
                 pass
         def next_button_pressed(self):
+                
                 if self.pgnGame is not None:
                         if (self.currentGameNode is not None ):
+                                if ( len(self.currentGameNode.comment) > 0 ):
+                                    if ( self.currentGameNode.parent is not None):
+                                        commentLine = self.currentGameNode.san() + " "+ self.currentGameNode.comment
+                                    else:
+                                        commentLine = self.currentGameNode.comment
+                                    commentLine = commentLine.replace('\n', ' ')
+                                    commentLine = commentLine.replace('\r', ' ')
+                                    commentLine = commentLine.replace('\t', ' ')
+                                    BalloonWindow(self.parent,text=commentLine)
                                 if( len(self.currentGameNode.variations) > 0 ):
                                     for variation in self.currentGameNode.variations:
                                             if variation.is_main_line():
@@ -825,6 +897,8 @@ class SandmanGui:
                         self.chessBoard  = self.currentGameNode.board()
                         self.draw_main_board()
         def end_button_pressed(self):
+                if ( self.is_puzzle_mode()):
+                        return
                 if  self.pgnGame is not None:
                         self.currentGameNode = self.currentGameNode.end()
                         self.chessBoard = self.currentGameNode.board()
@@ -889,9 +963,27 @@ class SandmanGui:
             if ( self.network_player is None):
                 return 
             networkDialog = NetworkInterfaceDialog(self.parent,self.network_player,self)
-                                
-                        
-                                                        
+        def solve_pgn(self):
+                self.mode = self.CONSTANT.PuzzleMode
+                self.PgnNextButton.config(state="disabled")
+                
+        
+        #verify if the move by user is same as the move in pgn 
+        def  verify_move(self):
+           if( self.line_done()):
+                   return 
+           for variation in self.currentGameNode.variations:
+               if (  self.chessBoard.fen == variation.board().fen ):
+                       print(variation.board())
+                       
+                       return True
+           return False
+        # Check if the current line is done or not  
+        def  line_done(self):
+           if ( len ( self.currentGameNode.variations)  <= 0 ):
+                    return True
+           return False
+                                            
                         
 if __name__ == "__main__":
         root = Tk()
