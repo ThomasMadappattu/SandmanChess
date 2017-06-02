@@ -1,3 +1,15 @@
+#!/usr/bin/python
+'''
+    SandmanChess.py 
+    Sandman chess is a tkinter based light weight chess UI with almost no dependencies
+    other than python chess library and chess trainer 
+    It extensively makes use of the chess library. Browse through pgn files,
+    train with chess puzzles. Play against players over the internet
+
+    Dependencies
+    - python chess library as its (dependents on python 2.7 - futures)
+
+'''
 import Tkinter
 import Tkinter as Tk
 from Tkinter import *
@@ -15,7 +27,9 @@ import fileinput
 import time
 import threading
 
-
+'''
+  Various Constants 
+'''
 class UIConstants:
         def __init__(self):
                 self.PlayerMode = 0
@@ -31,31 +45,67 @@ class UIConstants:
                 self.FICSPrompt = 'fics%'
                 self.ICCServerHost = "chessclub.com"
 
+''' 
+Sandman chess supports 3 types of players 
+   * Engine Players
+   * Network Players
+   * Users
+   * Custom Engines 
 
+'''
 class ChessEnginePlayer:
+        '''
+            Set the board
+        '''
         def set_board(self,brd):
                 self.chessBoard = brd
-                self.engineDepth = 30
+                self.engineDepth = 8
                 self.timemS = 10000
+        '''
+            Start a new game 
+        '''
         def start_new_game(self):
                 self.engine.ucinewgame()
+        '''
+           Set the engine path
+        '''
         def set_engine_path(self, path):
                 self.engine = chess.uci.popen_engine(path)
                 self.engine.uci()
                 self.start_new_game()
+        ''' 
+          Set the engine depth
+        '''
         def set_engine_depth(self, depth):
                 self.engineDepth = depth
+        '''
+           Set the time taken for the engine 
+        '''
         def set_time_millisecond( self, time):
                 self.timemS = time
+        '''
+          Set the time taken by the engine
+        '''
         def set_time_seconds(self, seconds):
                 self.set_time_millisecond(seconds* 1000)
+        '''
+            Make the engine think and return the move 
+        '''
         def get_move(self):
                 self.engine.position(self.chessBoard)
                 self.bestMove, self.ponderMove = self.engine.go( depth=self.engineDepth)
                 return self.bestMove
-                
+'''
+NetworkPlayer
+
+NetworkPlayer makes use of the Telent library to connect to
+fics and icc.
+'''
 
 class NetworkPlayer:
+        '''
+            Set default values everything and constants 
+        '''
         def __init__(self):
                 self.Constants = UIConstants()
                 self.current_line =' '
@@ -79,10 +129,9 @@ class NetworkPlayer:
                 self.REM_TIME_BLACK     = 25
                 self.MOVE_NUM           = 26
                 self.chessBoard         = chess.Board()
-                self.notificationStrings =  ["{Game ",
+                self.notificationStrings =  [
                 "Game ",
                 "    **ANNOUNCEMENT**",
-                "Removing game ",
                 "Notification: ",
                 "Creating: ",
                 "No ratings adjustment done.",
@@ -94,6 +143,9 @@ class NetworkPlayer:
                 "(U)(",
                 "(TD)(",
                 "(C)("]
+        '''
+             Login with the user name and password
+        '''
         def login(self,username,password,hostname):
                 self.telnetHandle = telnetlib.Telnet(hostname)
                 self.telnetHandle.read_until("login:")
@@ -104,7 +156,10 @@ class NetworkPlayer:
                         self.telnetHandle.write("set style 12 \r\n")
                 else:
                         self.telenetHandle.write("\r\n")
-                self.notificationStrings.append(username)
+        '''
+             Convert a style12 entry into a fen entry,
+             slightly hackish but works!
+        '''
         def style12_item_to_fen_item(self,item):
                 index = 0
                 length = len(item)
@@ -119,6 +174,9 @@ class NetworkPlayer:
                 fen_item = fen_item.replace('-','1')
                 print(fen_item)
                 return fen_item
+        '''
+             Convert style 12 representation into fen
+        '''
         def style12_to_fen(self):
                 if ( self.is_style_12()):
                         index = 2
@@ -152,22 +210,37 @@ class NetworkPlayer:
                         self.chessBoard = chess.Board(fen_str)
                         print(self.chessBoard)                               
                         
-                        
+        '''
+            Return True if the given entry is style_12
+        '''
         def is_style_12(self):
                 if(len(self.tokens) > 0 ):
                         if ( self.tokens[self.FIRST_WORD].strip() == '<12>'):
                                 return True
                 return False
+        '''
+          Return Ture if we have a notification
+        '''
         def is_notification(self):
                 for item in self.notificationStrings:
                         print(self.current_line.find(item))
                         if ( self.current_line.find(item) > 0 ):
                                 return True
                 return False
+        '''
+           Get game related information from the style 12 string
+        '''
+        def get_style12_info_string(self):
+                return ' '.join(self.tokens[self.GAME_NUMBER_INDEX:])
+        '''
+            Handle a line from telnet 
+        '''
         def handle_line(self):
                 if ( self.is_style_12()):
                         self.style12_to_fen()
-        
+        '''
+            Read the line 
+        '''
         def read_line(self):
                 self.current_line = self.telnetHandle.read_until("\n",timeout=50)
                 self.current_line = self.current_line.replace(self.Constants.FICSPrompt,"")
@@ -175,24 +248,48 @@ class NetworkPlayer:
                 print(self.tokens)   
                 self.handle_line()
                 return self.current_line
+        '''
+            Send a command to the telent server
+        '''
         def send_command(self,command):
                 self.telnetHandle.write(command+"\r\n")
-
+        '''
+            Initialize board 
+        '''
         def set_board(self,brd):
                 self.chessBoard = brd
+        '''
+             Set the current server type, may be needed in future
+        '''
         def set_type ( self, serverType):
                 self.netType = serverType
+        '''
+             Set username
+        '''
         def set_username( self, username):
                 self.username = username
+        '''
+             Set password
+        '''
         def set_password( self, pwd):
                 self.password = pwd
+        ''' Other getters and Setters, not used may be needed in future
+        '''
         def get_board(self):
                 return self.chessBoard
         def get_move(self):
+
                 pass
+        '''
+            Clean up
+        '''
         def close(self):
                 self.telnetHandle.close()
 
+'''
+      WoodPusherAI is used to test Sandman UI, basically returns
+      a random move!.  Play against it to feel good about yourself!
+'''
 class  WoodPusherAI:
         def set_board(self,brd):
                 self.chessBoard = brd
@@ -211,7 +308,9 @@ class  WoodPusherAI:
                            count = count + 1
                         return self.move
                 return None
-
+'''
+     Future Work
+'''
 
 class Player:
          
@@ -226,7 +325,9 @@ class TrainingPuzzle:
         def __init__(self):
                 self.sovled = False
                 self.visited = False
-
+'''
+   Parse Lucas Fns and other use full puzzle formats - To be done 
+'''
 class LucasFnsParser:
     def __init__(self):
         self.FenIndex = 0
@@ -254,28 +355,34 @@ class LucasFnsParser:
         if ( index< len(self.fnsLines)-1):
             self.currentItem = self.fnsLines[index]
     def GetPgn(self):
-            pgnString='[Event "?"]\r\n[Site "?"]\r\n[Date "????.??.??"]\r\n[Round "?"]\r\n[White "?"][Black "?"]\r\n[Result "*"][Fen="%s"]\r\n%s'%(self.GetcurrentFen(),self.GetCurrentMoves())
+            pgnString='[Event "?"]\r\n[Site "?"]\r\n[Date "????.??.??"]\r\n[Round "?"]\r\n[White "?"][Black "?"]\r\n[Result "*"][FEN "%s"]\r\n%s'%(self.GetcurrentFen(),self.GetCurrentMoves())
             print(pgnString)
             return pgnString
 
+'''
+    Class for storing Pgn header string and its offset within the file 
+'''
 
 class PgnItem:
         def __init__(self,header,offset):
                 self.header = header
                 self.offset = offset
-
+'''
+   Notification window, needs more work to make it better 
+'''
 class BalloonWindow:
-    def __init__(self,parent,text,x=400,y=20,wraplen=375,showtimeMs = 15000):
+    def __init__(self,parent,text,x=400,y=20,wraplen=375,showtimeMs = 30000):
         self.BalloonFrame =  Toplevel(parent)
-        self.BalloonFrame.wm_overrideredirect(True)
-        self.height = max ( 25 , ( len(text)/ ( wraplen /25) ) * 10.0 )
-        self.BalloonFrame.wm_geometry("%dx%d%+d%+d" % (400,self.height,550,20) ) 
-        self.BalloonLabel = Label(self.BalloonFrame, text=text, justify='left',background="#ffffe5", relief='solid', borderwidth=3,wraplength = wraplen)
-        self.BalloonLabel.pack(ipadx=1) 
+        self.BalloonEntry = Text(self.BalloonFrame,foreground="white",background="gray", relief='solid', width=60,height=10, font= ("Times", 12 ))
+        self.BalloonEntry.pack(ipadx=1)
+        self.BalloonEntry.insert(END,text)
+        self.BalloonEntry.config(state=DISABLED)
         self.BalloonFrame.after(showtimeMs,lambda:self.BalloonFrame.destroy())
 
 
-
+'''
+   Network Login Dialog 
+'''
 class LoginDialog:
     def __init__(self,parent,parentUI,hostname):
         self.LoginFrame = Toplevel(parent)
@@ -297,7 +404,10 @@ class LoginDialog:
         self.parentUI.network_player.login(self.UserNameTextBox.get(),self.PasswordTextBox.get(),self.hostname)
         self.LoginFrame.destroy()
          
-
+'''
+   Very basic and rudimentry interface to the FICS and ICC. What we have here is
+   a glorified telnet 
+'''
 class NetworkInterfaceDialog:
     def __init__(self,parent,network_player,parentUI):
         self.network_player= network_player
@@ -335,6 +445,7 @@ class NetworkInterfaceDialog:
                 if ( self.network_player.is_style_12()):
                    self.parentUI.chessBoard= self.network_player.get_board()
                    self.parentUI.draw_main_board()
+                   self.parentUI.set_info(self.network_player.get_style12_info_string())
                 if ( self.network_player.is_notification()):
                      self.notification_line = currentLine  
                      BalloonWindow(self.parent,self.notification_line,showtimeMs=10000)
@@ -345,7 +456,9 @@ class NetworkInterfaceDialog:
         self.update_thread.join(timeout=2)
 
 
-
+'''
+   Promotion Dialog :- shows a set of pieces to be selected 
+'''
 class PromotionDialog:
         def __init__(self,parentUI,color):
                 self.promotionFrame = Toplevel()
@@ -374,7 +487,9 @@ class PromotionDialog:
         def handlePButtonClick(self,pieceSymbol):
                 self.parentUI.promotionPiece = chess.Piece.from_symbol(pieceSymbol)
                 self.promotionFrame.destroy()
-
+'''
+  Handle pgn file opening 
+'''
 class PgnDialog:
         def __init__(self,parentUI,pgn_list):
                 self.pgnFrame = Toplevel(width=50)
@@ -425,6 +540,7 @@ class PgnDialog:
                 self.parentUI.txtPgn.delete(1.0,END)
                 self.parentUI.txtPgn.insert(END,str(self.parentUI.pgnGame))
                 self.parentUI.txtPgn.config(state=DISABLED)
+                self.parentUI.set_info(self.filtered_list[self.currentSelection].header)
                 self.pgnFrame.destroy()
 
                 
@@ -442,7 +558,9 @@ class PgnDialog:
             
 
                 
-                
+'''
+   Board square themes 
+'''
                 
 class BoardColor:
     def __init__(self,colorWhite,colorBlack):
@@ -458,7 +576,9 @@ class BoardColor:
         self.colorBlack = "#660099"
         self.colorWhite = "#eeeed2"
     
-
+'''
+   Chess set theme compoents, handle to all images
+'''
 class GuiTheme:
         def get_themes(self,themeDir):
                 theme_list = list()
@@ -481,7 +601,10 @@ class GuiTheme:
                 self.WhiteKing =  PhotoImage ( file = os.path.join (str(themeDir), "wK.gif"))
                 
                 
-
+'''
+    The main gui class, look at board clicked, draw_main board, those are the key
+    functions
+'''
 class SandmanGui:
         def __init__(self,parent):
                 self.rows = 8 
@@ -630,13 +753,13 @@ class SandmanGui:
                                 
                                 self.draw_main_board()
                                 Tk.update(self.parent)
-                                if ( self.verify_move() and moveLegal and self.is_puzzle_mode()):
-                
+                                if ( moveLegal and self.is_puzzle_mode()):
+                                        if ( self.verify_move() ):
                                                 self.next_button_pressed()
                                                 self.next_button_pressed()
                                                 if ( self.line_done()):
                                                         tkMessageBox.showinfo("Congrats!", "Solved")
-                                else:
+                                        else:
 
                                                 if ( self.is_puzzle_mode()):
                                                         tkMessageBox.showinfo("Nope!", "Not what i am looking for!")
@@ -866,6 +989,7 @@ class SandmanGui:
                                 self.currentGameNode = self.currentGameNode.parent
                                 self.chessBoard = self.currentGameNode.board()
                                 self.draw_main_board()
+                                #self.set_info( self.pgn_item_list[self.current_pgn_index].header)
                         
                 pass
         def next_button_pressed(self):
@@ -891,6 +1015,7 @@ class SandmanGui:
                                                             time.sleep(0.25)
                                                     self.chessBoard=self.currentGameNode.board()
                                                     self.draw_main_board()
+                                                    #self.set_info( self.pgn_item_list[self.current_pgn_index].header)
         def start_button_pressed(self):
                 if self.pgnGame is not None:
                         self.currentGameNode = self.pgnGame
@@ -903,6 +1028,7 @@ class SandmanGui:
                         self.currentGameNode = self.currentGameNode.end()
                         self.chessBoard = self.currentGameNode.board()
                         self.draw_main_board()
+                        #self.set_info( self.pgn_item_list[self.current_pgn_index].header)
 
         def draw_move_arrow(self,move):
                 move_str = str(move)
@@ -934,6 +1060,7 @@ class SandmanGui:
                         self.txtPgn.insert(END,str(self.pgnGame))
                         self.txtPgn.config(state=DISABLED)
                         self.draw_main_board()
+                        #self.set_info( self.pgn_item_list[self.current_pgn_index].header)
         def prev_game_pressed(self):
                 if ( self.pgn_item_list is not None):
                         self.current_pgn_index = max( (self.current_pgn_index-1),0 )
@@ -946,8 +1073,10 @@ class SandmanGui:
                         self.txtPgn.insert(END,str(self.pgnGame))
                         self.txtPgn.config(state=DISABLED)
                         self.draw_main_board()
+                        #self.set_info( self.pgn_item_list[self.current_pgn_index].header)
         def pgn_play_pressed(self, nextTime=False):
                 if ( self.currentGameNode is not None):
+                        self.set_info( self.pgn_item_list[self.current_pgn_index].header)
                         if ( self.pgn_stop ):
                                 self.pgn_stop = False
                                 if(nextTime):
@@ -966,7 +1095,13 @@ class SandmanGui:
         def solve_pgn(self):
                 self.mode = self.CONSTANT.PuzzleMode
                 self.PgnNextButton.config(state="disabled")
-                
+        def set_info(self,text):
+                prefixStr = ''
+                if ( self.chessBoard.turn == chess.BLACK ):
+                        prefixStr = "Black to Move  "
+                else:
+                        prefixStr = "White to Move  "
+                self.infoLabel.config(text = prefixStr + text ) 
         
         #verify if the move by user is same as the move in pgn 
         def  verify_move(self):
