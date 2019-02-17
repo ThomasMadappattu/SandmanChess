@@ -1,0 +1,11 @@
+
+[engine]
+futures
+
+[gaviota]
+backports.lzma
+
+[test]
+futures
+backports.lzma
+spur

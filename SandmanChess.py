@@ -26,6 +26,7 @@ from StringIO import StringIO
 import fileinput
 import time
 import threading
+import Queue
 
 '''
   Various Constants 
@@ -222,11 +223,11 @@ class NetworkPlayer:
           Return Ture if we have a notification
         '''
         def is_notification(self):
-                for item in self.notificationStrings:
-                        print(self.current_line.find(item))
-                        if ( self.current_line.find(item) > 0 ):
-                                return True
-                return False
+               # for item in self.notificationStrings:
+               #         print(self.current_line.find(item))
+               #         if ( self.current_line.find(item) > 0 ):
+               #                 return True
+               return False
         '''
            Get game related information from the style 12 string
         '''
@@ -295,13 +296,18 @@ class  WoodPusherAI:
                 self.chessBoard = brd
         def start_new_game(self):
                 pass
+        def get_move_count( self, move_generator):
+            move_count = 0 
+            for item in move_generator:
+                move_count = move_count + 1
+            return move_count
         def get_move(self):
                 moves = self.chessBoard.legal_moves
-                movesLen = len( self.chessBoard.legal_moves)
                 self.move = None
-                count  = 0 
+                movesLen = self.get_move_count(moves)
+                count = 0 
                 if ( movesLen  > 0 ):
-                        index = random.randint(0,len( self.chessBoard.legal_moves)-1)
+                        index = random.randint(0, movesLen -1 )
                         for mv in self.chessBoard.legal_moves:
                            if( count == index ):
                                    self.move = mv
@@ -386,6 +392,8 @@ class BalloonWindow:
 class LoginDialog:
     def __init__(self,parent,parentUI,hostname):
         self.LoginFrame = Toplevel(parent)
+        imgicon = PhotoImage(file=os.path.join('.','mainicon.gif'))
+        self.LoginFrame.tk.call('wm', 'iconphoto', root._w, imgicon)  
         self.parent = parent
         self.parentUI = parentUI
         self.UserNameLabel = Label(self.LoginFrame,text="Username:").grid(row=0)
@@ -426,6 +434,7 @@ class NetworkInterfaceDialog:
         self.go_on.set()
         self.notification_line=''
         self.parent = parent
+        self.messageQ = Queue.Queue()
     def send_command(self):
         self.network_player.send_command(self.CommandEntry.get())
     def start_update_thread(self):
@@ -443,9 +452,11 @@ class NetworkInterfaceDialog:
                     self.TelenetMessages.delete(1.0,END)
                     self.line_count = 0
                 if ( self.network_player.is_style_12()):
-                   self.parentUI.chessBoard= self.network_player.get_board()
-                   self.parentUI.draw_main_board()
-                   self.parentUI.set_info(self.network_player.get_style12_info_string())
+                   #try:
+                           self.parentUI.messageQ.put( self.network_player.get_board() )
+                           self.parentUI.set_info(self.network_player.get_style12_info_string())
+                   #except:
+                           print( "An Exception occured, swallowing it for now " )
                 if ( self.network_player.is_notification()):
                      self.notification_line = currentLine  
                      BalloonWindow(self.parent,self.notification_line,showtimeMs=10000)
@@ -642,9 +653,11 @@ class SandmanGui:
                 #Testing
                 self.username = ''
                 self.PgnNextActivate = False
+                self.messageQ = Queue.Queue()
+                self.parent.after( 100, self.process_messages )
         def init_board(self ,parentGui):
                 self.parent = parentGui
-                self.theme  = GuiTheme(os.path.join(self.themeDir,'boring'))
+                self.theme  = GuiTheme(os.path.join(self.themeDir,'dyche3'))
                 self.menubar = Menu(self.parent)
                 self.filemenu = Menu(self.menubar,tearoff=0)
                 self.filemenu.add_command(label="Flip Board",command = self.menu_flip_board)
@@ -703,7 +716,7 @@ class SandmanGui:
                 self.infoLabel.pack(side=BOTTOM)
                 self.draw_main_board()
                 self.parent.config( menu = self.menubar)
-                self.txtPgn.pack(side=TOP)
+                #self.txtPgn.pack(side=TOP)
                 self.infoFrame.pack(side=TOP)
                 self.canvas.bind("<Button-1>", self.board_clicked)
                 
@@ -1118,14 +1131,29 @@ class SandmanGui:
            if ( len ( self.currentGameNode.variations)  <= 0 ):
                     return True
            return False
+       # Process incoming messages, do net threads update the
+       # ui instead, let them send a message
+        def process_messages(self):
+           if self.messageQ.empty():
+               self.parent.after(100,self.process_messages)
+               return 
+           current_board = self.messageQ.get()
+           self.chessBoard = current_board
+           self.draw_main_board()
+           self.parent.after(100, self.process_messages)
+
                                             
                         
 if __name__ == "__main__":
         root = Tk()
         root.wm_title("Sandman Chess v 0.1 ")
         root.resizable(0,0)
+        imgicon = PhotoImage(file=os.path.join('.','mainicon.gif'))
+        root.tk.call('wm', 'iconphoto', root._w, imgicon)  
+        
+        #root.iconbitmap('mainicon.gif' ) 
         ui = SandmanGui(root)
-        ui.set_theme("boring",False)
+        ui.set_theme("dyche3",False)
         ui.init_board(root)
         ui.draw_main_board()
         print(  ui.chessBoard)
