@@ -45,14 +45,12 @@ class UIConstants:
                 self.FICSPort = 5000
                 self.FICSPrompt = 'fics%'
                 self.ICCServerHost = "chessclub.com"
-
-''' 
-Sandman chess supports 3 types of players 
-   * Engine Players
-   * Network Players
-   * Users
-   * Custom Engines 
-
+'''                
+        Sandman chess supports 3 types of players 
+            * Engine Players
+            * Network Players
+            * Users
+            * Custom Engines 
 '''
 class ChessEnginePlayer:
         '''
@@ -392,8 +390,6 @@ class BalloonWindow:
 class LoginDialog:
     def __init__(self,parent,parentUI,hostname):
         self.LoginFrame = Toplevel(parent)
-        imgicon = PhotoImage(file=os.path.join('.','mainicon.gif'))
-        self.LoginFrame.tk.call('wm', 'iconphoto', root._w, imgicon)  
         self.parent = parent
         self.parentUI = parentUI
         self.UserNameLabel = Label(self.LoginFrame,text="Username:").grid(row=0)
@@ -452,10 +448,10 @@ class NetworkInterfaceDialog:
                     self.TelenetMessages.delete(1.0,END)
                     self.line_count = 0
                 if ( self.network_player.is_style_12()):
-                   #try:
+                   try:
                            self.parentUI.messageQ.put( self.network_player.get_board() )
                            self.parentUI.set_info(self.network_player.get_style12_info_string())
-                   #except:
+                   except:
                            print( "An Exception occured, swallowing it for now " )
                 if ( self.network_player.is_notification()):
                      self.notification_line = currentLine  
@@ -655,6 +651,7 @@ class SandmanGui:
                 self.PgnNextActivate = False
                 self.messageQ = Queue.Queue()
                 self.parent.after( 100, self.process_messages )
+
         def init_board(self ,parentGui):
                 self.parent = parentGui
                 self.theme  = GuiTheme(os.path.join(self.themeDir,'dyche3'))
@@ -687,27 +684,42 @@ class SandmanGui:
                 self.pgnMenu.add_command(label="Open PGN", command=self.handle_open_pgn)
                 self.pgnMenu.add_command(label="List PGN Games", command = self.list_pgn_games)
                 self.menubar.add_cascade ( label = "PGN", menu = self.pgnMenu )
+
+                self.helpMenu = Menu( self.parent )
+                self.helpMenu.add_command( label = "Help", command = self.handle_help )
+                self.menubar.add_cascade( label = "Help", menu = self.helpMenu )
                 
                 self.canvas = Canvas ( self.parent, width = self.rows * self.squareLen, height = self.columns * self.squareLen, background = "grey")
                 self.canvas.pack(padx = 8,pady= 8)
                 self.buttonPanel =  Frame(self.parent)
-                self.PgnStartButton =  Button(self.buttonPanel,text="<<",width=2,command=self.start_button_pressed)
+                self.PgnStartImage = PhotoImage( file=os.path.join("resources","play_btn.gif" ))
+                self.PgnBeginImage = PhotoImage( file = os.path.join( "resources", "rev_btn.gif") )
+                self.PgnEndImage = PhotoImage ( file=os.path.join("resources","ff_btn.gif"))
+                self.PgnRevImage = PhotoImage ( file=os.path.join("resources","rev_play_btn.gif"))
+                self.PgnPauseImage = PhotoImage ( file=os.path.join("resources","pause_btn.gif"))
+                self.PgnPlayImage = PhotoImage ( file = os.path.join("resources", "pgnplay.gif") ) 
+                self.solveImage = PhotoImage ( file = os.path.join("resources", "solve.gif"))
+                self.nextGameImage = PhotoImage ( file = os.path.join( "resources", "next_game.gif"))
+                self.prevGameImage = PhotoImage ( file = os.path.join ("resources", "prev_game.gif"))
+
+                self.PgnStartButton =  Button(self.buttonPanel,image = self.PgnBeginImage,width=25,command=self.start_button_pressed)
                 self.PgnStartButton.pack(side = LEFT)
-                self.PgnPrevButton = Button(self.buttonPanel,text ="<",width=2,command=self.prev_button_pressed)
+                self.PgnPrevButton = Button(self.buttonPanel,image = self.PgnRevImage,width=25,command=self.prev_button_pressed)
                 self.PgnPrevButton.pack(padx=3,side= LEFT)
-                self.PgnNextButton = Button (self.buttonPanel, text =">",width=2,command=self.next_button_pressed)
+                self.PgnNextButton = Button (self.buttonPanel,image = self.PgnStartImage,width=25,command=self.next_button_pressed)
                 self.PgnNextButton.pack(padx=3,side=LEFT)
-                self.PgnEndButton= Button (self.buttonPanel,text =">>",width=3,command=self.end_button_pressed)
+
+                self.PgnEndButton= Button (self.buttonPanel,image=self.PgnEndImage, height=25,width=25,command=self.end_button_pressed)
                 self.PgnEndButton.pack(padx=3,side=LEFT)
-                self.SolveButton =Button(self.buttonPanel,text="Solve",width=4)
+                self.SolveButton =Button(self.buttonPanel,image=self.solveImage,width=25 )
                 self.SolveButton.pack(padx=3,side=LEFT)
-                self.NextGameButton = Button (self.buttonPanel,text=">>Game",width=4,command=self.next_game_pressed)
+                self.NextGameButton = Button (self.buttonPanel,image = self.nextGameImage,height=25,width=25,command=self.next_game_pressed)
                 self.NextGameButton.pack(padx=3,side=LEFT)
-                self.PrevGameButton = Button(self.buttonPanel,text="<<Game",width=4,command=self.prev_game_pressed)
+                self.PrevGameButton = Button(self.buttonPanel,image=self.prevGameImage,height=25,width=25,command=self.prev_game_pressed)
                 self.PrevGameButton.pack(padx=3,side=LEFT)
-                self.PlayButton = Button(self.buttonPanel,text="[>]",width=2,command=self.pgn_play_pressed)
+                self.PlayButton = Button(self.buttonPanel,image = self.PgnPlayImage ,width=25,command=self.pgn_play_pressed)
                 self.PlayButton.pack(padx=3,side=LEFT)
-                self.StopButton = Button( self.buttonPanel,text="[]",width=2,command=self.stop_button_pressed)
+                self.StopButton = Button( self.buttonPanel,image=self.PgnPauseImage,width=25,command=self.stop_button_pressed)
                 self.StopButton.pack(padx=3,side=LEFT)
                 self.buttonPanel.pack()
                 self.infoFrame = Frame(self.parent)
@@ -943,7 +955,7 @@ class SandmanGui:
            
             
         def decide_who_plays(self):
-            if tkMessageBox.askyesno(" White ?", "Engine plays White  ?"):
+            if tkMessageBox.askyesno(" White ?", "Engine plays next  ?"):
                     self.playerMovesFirst = True
                     self.draw_player_move_first()
                         
@@ -1141,6 +1153,8 @@ class SandmanGui:
            self.chessBoard = current_board
            self.draw_main_board()
            self.parent.after(100, self.process_messages)
+        def handle_help(self):
+            pass
 
                                             
                         
@@ -1148,8 +1162,6 @@ if __name__ == "__main__":
         root = Tk()
         root.wm_title("Sandman Chess v 0.1 ")
         root.resizable(0,0)
-        imgicon = PhotoImage(file=os.path.join('.','mainicon.gif'))
-        root.tk.call('wm', 'iconphoto', root._w, imgicon)  
         
         #root.iconbitmap('mainicon.gif' ) 
         ui = SandmanGui(root)
